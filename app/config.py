@@ -1,0 +1,49 @@
+"""
+Application settings loaded from environment variables.
+"""
+
+from pathlib import Path
+
+from pydantic import Field
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    """Global application settings."""
+
+    # --- LLM Providers (Mode C) ---
+    # These use their own env var names (no PROBE_ prefix)
+    gemini_api_key: str = ""
+    groq_api_key: str = ""
+    ollama_base_url: str = "http://localhost:11434"
+
+    # --- Provider priority ---
+    probe_llm_provider: str = "gemini,groq,ollama"
+
+    # --- Storage ---
+    output_dir: Path = Path("./outputs")
+    db_path: Path = Path("./probe.db")
+
+    # --- Limits ---
+    max_file_size_mb: int = 10
+    max_project_size_mb: int = 500
+    max_concurrent_llm_calls: int = 5
+
+    # --- Server ---
+    host: str = "0.0.0.0"
+    port: int = 8000
+    debug: bool = True
+
+    model_config = {
+        "env_file": ".env",
+        "extra": "ignore",
+        "env_prefix": "",
+    }
+
+    @property
+    def llm_providers(self) -> list[str]:
+        """Return ordered list of LLM provider names."""
+        return [p.strip() for p in self.probe_llm_provider.split(",") if p.strip()]
+
+
+settings = Settings()
