@@ -11,6 +11,10 @@ import logging
 from pathlib import Path
 
 from app.config import settings
+from app.modes.one_shot import build_one_shot_bundle
+from app.output.markdown import render_markdown
+from app.output.xml_markdown import render_xml_markdown
+from app.output.json_output import render_json
 from app.core.dependency_analyzer import analyze_dependencies
 from app.core.file_classifier import classify_file, classify_skipped_file
 from app.core.ignore_engine import IgnoreEngine
@@ -24,6 +28,7 @@ from app.core.workspace import WorkspaceManager
 from app.models.internal import FileRecord, ProjectContext
 from app.models.requests import AnalyzeRequest
 from app.services.job_manager import JobManager
+from app.llm.base import get_available_provider
 
 logger = logging.getLogger(__name__)
 
@@ -219,13 +224,35 @@ async def run_pipeline(
         output_dir.mkdir(parents=True, exist_ok=True)
 
         if request.mode == "one_shot":
-            # TODO: Mode A — bundle builder (Milestone 2)
-            # For now, save a basic summary as the result
+            # Mode A — one_shot (Milestone 2 integration)
+            await job_manager.update_progress(job_id, phase="building_bundle")
+            
+            # 1. Build the bundle (handles token budget & file reading)
+            file_contents = await build_one_shot_bundle(context, request.options.max_tokens)
+            
+            # 2. Assemble prompt for LLM
+            # We create a simple markdown representation to send to the Simple LLM
+            # It just needs to read the code to summarize it.
+            bundle_prompt = render_markdown(context, "Please summarize this codebase.", file_contents)
+            
+            await job_manager.update_progress(job_id, phase="generating_summary")
+            provider = await get_available_provider(settings.llm_providers, tier="simple")
+            logger.info("[%s] Using Simple LLM provider: %s", job_id, provider.name)
+            
+            # 3. Use the LLM to generate the context summary
+            summary = await provider.generate(bundle_prompt, max_tokens=8000)
+            
+            # 4. Format final output
+            if request.output_format == "json":
+                final_output = render_json(context, summary, file_contents)
+            elif request.output_format == "xml_markdown":
+                final_output = render_xml_markdown(context, summary, file_contents)
+            else:
+                final_output = render_markdown(context, summary, file_contents)
+            
             result_path = output_dir / f"context.{_format_extension(request.output_format)}"
-            result_path.write_text(
-                _build_placeholder_output(context, request.output_format),
-                encoding="utf-8",
-            )
+            result_path.write_text(final_output, encoding="utf-8")
+            
             await job_manager.mark_completed(job_id, result_path=str(result_path))
 
         elif request.mode == "rag":

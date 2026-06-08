@@ -14,8 +14,16 @@ class Settings(BaseSettings):
     # --- LLM Providers (Mode C) ---
     # These use their own env var names (no PROBE_ prefix)
     gemini_api_key: str = ""
+    gemini_simple_model: str = "gemini-2.5-flash"
+    gemini_complex_model: str = "gemini-1.5-pro"
+    
     groq_api_key: str = ""
+    groq_simple_model: str = "llama-3.1-8b-instant"
+    groq_complex_model: str = "llama-3.3-70b-versatile"
+    
     ollama_base_url: str = "http://localhost:11434"
+    ollama_simple_model: str = "gemma2:2b"
+    ollama_complex_model: str = "llama3.1:8b"
 
     # --- Provider priority ---
     probe_llm_provider: str = "gemini,groq,ollama"

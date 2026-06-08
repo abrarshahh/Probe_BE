@@ -38,12 +38,13 @@ class BaseLLMProvider(ABC):
         ...
 
 
-async def get_available_provider(provider_order: list[str]) -> BaseLLMProvider:
+async def get_available_provider(provider_order: list[str], tier: str = "simple") -> BaseLLMProvider:
     """
     Return the first available LLM provider from the priority list.
 
     Args:
         provider_order: List of provider names to try in order.
+        tier: "simple" or "complex" to select the appropriate model.
 
     Returns:
         An initialized, available provider.
@@ -51,5 +52,30 @@ async def get_available_provider(provider_order: list[str]) -> BaseLLMProvider:
     Raises:
         RuntimeError: If no provider is available.
     """
-    # TODO: Import and check each provider
-    raise NotImplementedError("No LLM provider available")
+    from app.llm.gemini import GeminiProvider
+    from app.llm.groq import GroqProvider
+    from app.llm.ollama import OllamaProvider
+
+    for p in provider_order:
+        p_lower = p.lower().strip()
+        if not p_lower:
+            continue
+
+        provider: BaseLLMProvider
+        parts = p_lower.split("/", 1)
+        provider_type = parts[0]
+        model_name = parts[1] if len(parts) > 1 else None
+
+        if provider_type == "gemini":
+            provider = GeminiProvider(model_name, tier=tier) if model_name else GeminiProvider(tier=tier)
+        elif provider_type == "groq":
+            provider = GroqProvider(model_name, tier=tier) if model_name else GroqProvider(tier=tier)
+        elif provider_type == "ollama":
+            provider = OllamaProvider(model_name, tier=tier) if model_name else OllamaProvider(tier=tier)
+        else:
+            continue
+
+        if await provider.is_available():
+            return provider
+
+    raise RuntimeError(f"No LLM provider is available from the list: {provider_order}")

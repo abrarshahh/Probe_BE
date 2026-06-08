@@ -19,8 +19,18 @@ def count_tokens(text: str, model: str = "gpt-4o") -> int:
     Returns:
         Estimated token count.
     """
-    # TODO: Implement tiktoken-based counting with fallback heuristic
-    raise NotImplementedError
+    try:
+        import tiktoken
+        # Try to get the encoding for the model
+        try:
+            encoding = tiktoken.encoding_for_model(model)
+        except KeyError:
+            # Fallback to cl100k_base which is standard for most newer models
+            encoding = tiktoken.get_encoding("cl100k_base")
+        return len(encoding.encode(text))
+    except Exception:
+        # Fallback to heuristic if tiktoken is missing or fails
+        return estimate_tokens(text)
 
 
 def estimate_tokens(text: str) -> int:

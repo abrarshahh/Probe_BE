@@ -44,3 +44,5 @@ Thumbs.db
 
 # Other Files
 plan.md
+checks/
+checks/*
