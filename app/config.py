@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     # --- Storage ---
     output_dir: Path = Path("./outputs")
     db_path: Path = Path("./probe.db")
+    chroma_persist_dir: Path = Path("./chroma_db")
+
+    # --- AI Models ---
+    embedding_model: str = "all-MiniLM-L6-v2"
+    llm_model: str = "gemini/gemini-2.5-flash"
 
     # --- Limits ---
     max_file_size_mb: int = 10

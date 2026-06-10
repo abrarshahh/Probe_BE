@@ -189,5 +189,10 @@ async def resolve_source(
             raise ValueError("Upload path is required for source_type='upload'")
         return await resolve_upload(upload_path, workspace_path)
 
+    elif source_type == "local":
+        if not url:
+            raise ValueError("Local path (in url field) is required for source_type='local'")
+        return Path(url)
+
     else:
         raise ValueError(f"Unknown source_type: {source_type}")

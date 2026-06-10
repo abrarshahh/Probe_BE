@@ -28,6 +28,7 @@ probe.db
 
 # ChromaDB
 chroma_data/
+chroma_db/
 
 # Testing
 .pytest_cache/

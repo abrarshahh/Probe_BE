@@ -12,6 +12,7 @@ from pathlib import Path
 
 from app.config import settings
 from app.modes.one_shot import build_one_shot_bundle
+from app.modes.rag import build_rag_index
 from app.output.markdown import render_markdown
 from app.output.xml_markdown import render_xml_markdown
 from app.output.json_output import render_json
@@ -291,8 +292,22 @@ async def run_pipeline(
             await job_manager.mark_completed(job_id, result_path=str(result_path))
 
         elif request.mode == "rag":
-            # TODO: Mode B — RAG index builder (Milestone 4)
-            await job_manager.mark_completed(job_id)
+            # Mode B — RAG index builder (Milestone 4)
+            await job_manager.update_progress(job_id, phase="building_rag_index")
+
+            import json as _json
+            index_meta = await build_rag_index(context, project_root, job_id)
+
+            # Save index metadata
+            meta_path = output_dir / "index_meta.json"
+            meta_path.write_text(_json.dumps(index_meta, indent=2), encoding="utf-8")
+
+            logger.info(
+                "[%s] RAG index complete: %d chunks in collection '%s'",
+                job_id, index_meta.get("chunk_count", 0), index_meta.get("collection_name", ""),
+            )
+
+            await job_manager.mark_completed(job_id, result_path=str(meta_path))
 
         elif request.mode == "map_reduce":
             # TODO: Mode C — Map-Reduce summarizer (Milestone 5)

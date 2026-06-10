@@ -50,6 +50,7 @@ class QuerySource(BaseModel):
 class QueryResponse(BaseModel):
     """Response for POST /api/v1/jobs/{job_id}/query."""
 
+    answer: str = ""
     context_payload: str
     sources: list[QuerySource] = Field(default_factory=list)
     token_count: int = 0

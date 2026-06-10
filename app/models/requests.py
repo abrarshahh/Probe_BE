@@ -12,8 +12,8 @@ from pydantic import BaseModel, Field
 class SourceInput(BaseModel):
     """Describes where the project source lives."""
 
-    type: Literal["github_url", "upload"]
-    url: str | None = Field(None, description="GitHub repository URL (required for github_url type)")
+    type: Literal["github_url", "upload", "local"]
+    url: str | None = Field(None, description="GitHub URL or local path")
     branch: str = Field("main", description="Branch, tag, or commit to clone")
     github_token: str | None = Field(None, description="PAT for private repositories")
 
