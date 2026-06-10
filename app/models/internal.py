@@ -26,6 +26,9 @@ class FileRecord(BaseModel):
     skip_reason: str | None = None
     is_binary: bool = False
     is_generated: bool = False
+    imports: list[str] = []
+    exports: list[str] = []
+    test_targets: list[str] = []
 
 
 class SymbolRecord(BaseModel):
@@ -68,3 +71,4 @@ class ProjectContext(BaseModel):
     dependencies: list[DependencyInfo] = []
     entry_points: list[str] = []
     skipped_files: list[FileRecord] = []
+    test_mapping: dict[str, list[str]] = {}

@@ -35,20 +35,55 @@ def render_xml_markdown(context: ProjectContext, summary: str, file_contents: di
     lines.append(f"      <![CDATA[\n{context.directory_tree}\n      ]]>")
     lines.append("    </directory_tree>")
     lines.append("  </structural_map>")
+
+    # Symbols
+    if context.symbols:
+        lines.append("  <symbols>")
+        for sym in context.symbols:
+            attrs = (
+                f'name="{sym.name}" kind="{sym.kind}" file="{sym.file_path}" '
+                f'start_line="{sym.start_line}" end_line="{sym.end_line}"'
+            )
+            if sym.parent:
+                attrs += f' parent="{sym.parent}"'
+            if sym.signature:
+                lines.append(f"    <symbol {attrs}>")
+                lines.append(f"      <![CDATA[{sym.signature}]]>")
+                lines.append("    </symbol>")
+            else:
+                lines.append(f"    <symbol {attrs} />")
+        lines.append("  </symbols>")
+
+    # Test mapping
+    if context.test_mapping:
+        lines.append("  <test_mapping>")
+        for test_file, sources in context.test_mapping.items():
+            lines.append(f'    <test_file path="{test_file}">')
+            for src in sources:
+                lines.append(f'      <tests path="{src}" />')
+            lines.append("    </test_file>")
+        lines.append("  </test_mapping>")
     
     lines.append("  <files>")
     for path, content in file_contents.items():
         lang = ""
         is_truncated = "false"
+        file_imports: list[str] = []
         for f in context.files:
             if f.path == path:
                 lang = f.language or ""
+                file_imports = f.imports
                 if f.status == "truncated":
                     is_truncated = "true"
                 break
                 
         lines.append(f'    <file path="{path}" language="{lang}" truncated="{is_truncated}">')
-        lines.append(f"      <![CDATA[\n{content}\n      ]]>")
+        if file_imports:
+            lines.append("      <imports>")
+            for imp in file_imports:
+                lines.append(f"        <import><![CDATA[{imp}]]></import>")
+            lines.append("      </imports>")
+        lines.append(f"      <content><![CDATA[\n{content}\n      ]]></content>")
         lines.append("    </file>")
         
     lines.append("  </files>")

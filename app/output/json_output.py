@@ -28,9 +28,15 @@ def render_json(context: ProjectContext, summary: str, file_contents: dict[str, 
     for path, content in file_contents.items():
         lang = ""
         is_truncated = False
+        file_imports: list[str] = []
+        file_exports: list[str] = []
+        test_targets: list[str] = []
         for f in context.files:
             if f.path == path:
                 lang = f.language or ""
+                file_imports = f.imports
+                file_exports = f.exports
+                test_targets = f.test_targets
                 if f.status == "truncated":
                     is_truncated = True
                 break
@@ -39,8 +45,26 @@ def render_json(context: ProjectContext, summary: str, file_contents: dict[str, 
             "path": path,
             "language": lang,
             "truncated": is_truncated,
+            "imports": file_imports,
+            "exports": file_exports,
+            "test_targets": test_targets,
             "content": content
         })
+
+    # Symbols
+    symbols_list = [
+        {
+            "name": sym.name,
+            "kind": sym.kind,
+            "file_path": sym.file_path,
+            "start_line": sym.start_line,
+            "end_line": sym.end_line,
+            "signature": sym.signature,
+            "parent": sym.parent,
+            "docstring": sym.docstring,
+        }
+        for sym in context.symbols
+    ]
         
     output_dict = {
         "project": {
@@ -50,6 +74,8 @@ def render_json(context: ProjectContext, summary: str, file_contents: dict[str, 
                 "directory_tree": context.directory_tree,
                 "entry_points": context.entry_points
             },
+            "symbols": symbols_list,
+            "test_mapping": context.test_mapping,
             "files": files_list
         }
     }

@@ -19,6 +19,8 @@ from app.core.dependency_analyzer import analyze_dependencies
 from app.core.file_classifier import classify_file, classify_skipped_file
 from app.core.ignore_engine import IgnoreEngine
 from app.core.source_resolver import resolve_source
+from app.core.symbol_extractor import extract_symbols
+from app.core.test_inferencer import infer_test_mapping
 from app.core.structure_mapper import (
     build_file_inventory,
     detect_entry_points,
@@ -160,7 +162,39 @@ async def run_shared_pipeline(
             language_counts, key=lambda l: language_counts[l], reverse=True
         )[:5]
 
-        # ── Step 8: Extract project name ─────────────────────────────────
+        # ── Step 8: Extract symbols ──────────────────────────────────────
+        await job_manager.update_progress(job_id, phase="extracting_symbols")
+
+        all_symbols = []
+        for f in included_files:
+            result = extract_symbols(Path(f.absolute_path), f.language)
+            all_symbols.extend(result.symbols)
+            f.imports = result.imports
+            f.exports = result.exports
+
+        logger.info(
+            "[%s] Symbol extraction complete: %d symbols from %d files",
+            job_id, len(all_symbols), len(included_files),
+        )
+
+        # ── Step 9: Test-to-source inference ──────────────────────────────
+        await job_manager.update_progress(job_id, phase="inferring_test_mapping")
+
+        test_mapping = infer_test_mapping(included_files)
+
+        # Attach test targets to the FileRecords
+        for test_path, source_paths in test_mapping.items():
+            for f in included_files:
+                if f.path == test_path:
+                    f.test_targets = source_paths
+                    break
+
+        logger.info(
+            "[%s] Test inference complete: %d test files mapped",
+            job_id, len(test_mapping),
+        )
+
+        # ── Step 10: Extract project name ────────────────────────────────
         project_name = project_root.name
         source_uri = request.source.url or ""
 
@@ -174,10 +208,11 @@ async def run_shared_pipeline(
             primary_languages=primary_languages,
             directory_tree=directory_tree,
             files=included_files,
-            symbols=[],  # Populated in Milestone 3
+            symbols=all_symbols,
             dependencies=dependencies,
             entry_points=entry_points,
             skipped_files=skipped_files,
+            test_mapping=test_mapping,
         )
 
         logger.info(
