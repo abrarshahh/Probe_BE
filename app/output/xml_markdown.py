@@ -7,7 +7,11 @@ code blocks — optimized for structured LLM prompts.
 
 from __future__ import annotations
 
+import logging
+
 from app.models.internal import ProjectContext
+
+logger = logging.getLogger(__name__)
 
 
 def render_xml_markdown(context: ProjectContext, summary: str, file_contents: dict[str, str]) -> str:
@@ -22,6 +26,13 @@ def render_xml_markdown(context: ProjectContext, summary: str, file_contents: di
     Returns:
         A complete XML document.
     """
+    logger.info("Rendering XML-Markdown hybrid bundle for project: %s", context.name)
+    logger.debug(
+        "Stats: %d files, %d symbols, %d entry points",
+        len(file_contents),
+        len(context.symbols),
+        len(context.entry_points),
+    )
     lines: list[str] = []
     lines.append("<project>")
     lines.append(f"  <name>{context.name}</name>")
@@ -89,4 +100,6 @@ def render_xml_markdown(context: ProjectContext, summary: str, file_contents: di
     lines.append("  </files>")
     lines.append("</project>")
     
-    return "\n".join(lines)
+    result = "\n".join(lines)
+    logger.info("XML-Markdown rendering complete. Generated %d characters", len(result))
+    return result

@@ -25,6 +25,7 @@ async def list_projects(
     limit: int = Query(10, ge=1, le=100, description="Limit to N projects"),
 ) -> Any:
     """List all projects and their versions with pagination."""
+    logger.info("Listing projects (skip=%d, limit=%d)", skip, limit)
     projects = await project_manager.list_projects(skip=skip, limit=limit)
     response = []
     for p in projects:
@@ -33,17 +34,21 @@ async def list_projects(
             "project_name": p.name,
             "number_of_versions": len(p.versions)
         })
+    logger.info("Returning %d projects", len(response))
     return response
 
 @router.get("/projects/{project_id}", response_model=ProjectDetailResponse)
 async def get_project(project_id: str) -> Any:
     """Get project details."""
+    logger.info("Fetching project details for project_id: %s", project_id)
     project = await project_manager.get_project_by_id(project_id)
     if not project:
+        logger.warning("Project not found: %s", project_id)
         raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
     
     latest_version = project.versions[0] if project.versions else None
     
+    logger.info("Project details successfully retrieved for project: %s", project.name)
     return {
         "project_id": project.id,
         "project_name": project.name,
@@ -56,17 +61,23 @@ async def get_project(project_id: str) -> Any:
 @router.delete("/projects/{project_id}")
 async def delete_project(project_id: str) -> dict[str, str]:
     """Delete a project from DB and wipe its MinIO assets."""
+    logger.info("Deleting project: %s", project_id)
     deleted = await project_manager.delete_project(project_id)
     if not deleted:
+        logger.warning("Delete failed — project not found: %s", project_id)
         raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
+    logger.info("Project deleted: %s", project_id)
     return {"message": "Project deleted successfully"}
 
 @router.get("/projects/status/{job_id}", response_model=ProjectVersionResponse)
 async def get_job_status(job_id: str) -> ProjectVersionResponse:
     """Get the status of a specific analysis job (version)."""
+    logger.info("Fetching job status for job_id: %s", job_id)
     version = await project_manager.get_version(job_id)
     if not version:
+        logger.warning("Job not found: %s", job_id)
         raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+    logger.info("Job status retrieved for job_id: %s (status=%s, phase=%s)", job_id, version.status, version.phase)
     return version  # type: ignore[return-value]
 
 @router.post("/projects/analyze", response_model=AnalyzeResponse)

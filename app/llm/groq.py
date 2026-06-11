@@ -4,9 +4,13 @@ Groq provider — free tier with open models (Llama 3, Gemma).
 
 from __future__ import annotations
 
+import logging
+
 from groq import AsyncGroq
 from app.llm.base import BaseLLMProvider
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class GroqProvider(BaseLLMProvider):
@@ -38,6 +42,9 @@ class GroqProvider(BaseLLMProvider):
         """Generate text using Groq API."""
         client = self._get_client()
         
+        logger.info("Groq request — model=%s, prompt_len=%d chars, max_tokens=%d", self.model_name, len(prompt), max_tokens)
+        logger.debug("Groq prompt (first 1000 chars): %s", prompt[:1000])
+
         completion = await client.chat.completions.create(
             model=self.model_name,
             messages=[
@@ -45,5 +52,7 @@ class GroqProvider(BaseLLMProvider):
             ],
             max_tokens=max_tokens,
         )
-        content = completion.choices[0].message.content
-        return content or ""
+        content = completion.choices[0].message.content or ""
+        logger.info("Groq response — model=%s, response_len=%d chars", self.model_name, len(content))
+        logger.debug("Groq response (first 1000 chars): %s", content[:1000])
+        return content

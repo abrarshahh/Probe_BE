@@ -27,8 +27,12 @@ Base = declarative_base()
 
 async def get_db():
     """FastAPI dependency for getting a database session."""
+    logger.debug("Yielding database session from AsyncSessionLocal")
     async with AsyncSessionLocal() as session:
-        yield session
+        try:
+            yield session
+        finally:
+            logger.debug("Closing database session")
 
 async def init_db() -> None:
     """Create all tables in the database."""

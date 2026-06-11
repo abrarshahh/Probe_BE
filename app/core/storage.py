@@ -51,17 +51,21 @@ class StorageClient:
 
     def get_file_stream(self, object_name: str) -> Any:
         """Get a file stream from MinIO. Returns None if object doesn't exist."""
+        logger.info("Streaming file from MinIO: %s", object_name)
         try:
             response = self.client.get_object(self.bucket, object_name)
             return response
         except S3Error as e:
             if e.code == "NoSuchKey":
+                logger.warning("Object not found in MinIO: %s", object_name)
                 return None
+            logger.error("MinIO error streaming %s: %s", object_name, e)
             raise
 
     def upload_json(self, object_name: str, data: dict[str, Any] | list[Any]) -> None:
         """Upload a Python dictionary/list as a JSON object to MinIO."""
         import tempfile
+        logger.debug("Uploading JSON to MinIO: %s", object_name)
         
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".json", encoding="utf-8") as tmp:
             json.dump(data, tmp, indent=2)
@@ -75,6 +79,7 @@ class StorageClient:
     def upload_text(self, object_name: str, text: str) -> None:
         """Upload a text string to MinIO."""
         import tempfile
+        logger.debug("Uploading text (%d chars) to MinIO: %s", len(text), object_name)
         
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".txt", encoding="utf-8") as tmp:
             tmp.write(text)

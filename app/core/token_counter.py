@@ -8,6 +8,11 @@ and by Mode B (RAG) for chunk sizing.
 from __future__ import annotations
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 def count_tokens(text: str, model: str = "gpt-4o") -> int:
     """
     Count tokens in text using tiktoken.
@@ -26,10 +31,18 @@ def count_tokens(text: str, model: str = "gpt-4o") -> int:
             encoding = tiktoken.encoding_for_model(model)
         except KeyError:
             # Fallback to cl100k_base which is standard for most newer models
+            logger.debug("Model '%s' not found in tiktoken, falling back to cl100k_base", model)
             encoding = tiktoken.get_encoding("cl100k_base")
-        return len(encoding.encode(text))
-    except Exception:
+        count = len(encoding.encode(text))
+        logger.debug("Counted %d tokens (tiktoken) for model %s", count, model)
+        return count
+    except Exception as e:
         # Fallback to heuristic if tiktoken is missing or fails
+        logger.warning(
+            "Failed to count tokens with tiktoken for model '%s' (error: %s). Falling back to character heuristic.",
+            model,
+            e,
+        )
         return estimate_tokens(text)
 
 
@@ -39,4 +52,6 @@ def estimate_tokens(text: str) -> int:
 
     Use when tiktoken is not available or speed matters more than accuracy.
     """
-    return max(1, len(text) // 4)
+    estimate = max(1, len(text) // 4)
+    logger.debug("Estimated %d tokens (heuristic) for %d characters", estimate, len(text))
+    return estimate

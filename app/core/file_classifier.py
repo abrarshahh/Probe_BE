@@ -261,6 +261,14 @@ def classify_file(path: Path, project_root: Path) -> FileRecord:
     language = _detect_language(path)
     category = _detect_category(path, project_root)
 
+    logger.debug(
+        "Classified file: %s -> language=%s, category=%s, size=%d bytes",
+        rel_path,
+        language,
+        category,
+        size,
+    )
+
     return FileRecord(
         path=rel_path,
         absolute_path=str(path.resolve()),
@@ -285,7 +293,7 @@ def classify_skipped_file(path: Path, project_root: Path, reason: str) -> FileRe
     except OSError:
         size = 0
 
-    return FileRecord(
+    record = FileRecord(
         path=rel_path,
         absolute_path=str(path.resolve()),
         language=_detect_language(path),
@@ -296,3 +304,10 @@ def classify_skipped_file(path: Path, project_root: Path, reason: str) -> FileRe
         is_binary="binary" in reason,
         is_generated="generated" in reason,
     )
+    logger.debug(
+        "Classified skipped file: %s -> reason=%s, category=%s",
+        rel_path,
+        reason,
+        record.category,
+    )
+    return record

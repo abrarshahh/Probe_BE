@@ -4,9 +4,13 @@ Ollama provider — run open models locally with zero cost.
 
 from __future__ import annotations
 
+import logging
+
 import httpx
 from app.llm.base import BaseLLMProvider
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class OllamaProvider(BaseLLMProvider):
@@ -30,10 +34,14 @@ class OllamaProvider(BaseLLMProvider):
                 response = await client.get(f"{self.base_url}/api/tags", timeout=2.0)
                 return response.status_code == 200
         except Exception:
+            logger.debug("Ollama not reachable at %s", self.base_url)
             return False
 
     async def generate(self, prompt: str, max_tokens: int = 1024) -> str:
         """Generate text using local Ollama instance."""
+        logger.info("Ollama request — model=%s, prompt_len=%d chars, max_tokens=%d", self.model, len(prompt), max_tokens)
+        logger.debug("Ollama prompt (first 1000 chars): %s", prompt[:1000])
+
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{self.base_url}/api/generate",
@@ -46,7 +54,11 @@ class OllamaProvider(BaseLLMProvider):
                 timeout=60.0
             )
             if response.status_code != 200:
+                logger.error("Ollama error: status=%d, response=%s", response.status_code, response.text[:500])
                 raise RuntimeError(f"Ollama error: status={response.status_code}, response={response.text}")
             
             data = response.json()
-            return data.get("response", "")
+            answer = data.get("response", "")
+            logger.info("Ollama response — model=%s, response_len=%d chars", self.model, len(answer))
+            logger.debug("Ollama response (first 1000 chars): %s", answer[:1000])
+            return answer

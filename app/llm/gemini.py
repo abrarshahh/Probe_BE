@@ -4,9 +4,13 @@ Google Gemini Flash provider — free tier via Google AI Studio.
 
 from __future__ import annotations
 
+import logging
+
 import google.generativeai as genai
 from app.llm.base import BaseLLMProvider
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class GeminiProvider(BaseLLMProvider):
@@ -38,6 +42,9 @@ class GeminiProvider(BaseLLMProvider):
         """Generate text using Gemini Flash."""
         self._ensure_configured()
         
+        logger.info("Gemini request — model=%s, prompt_len=%d chars, max_tokens=%d", self.model_name, len(prompt), max_tokens)
+        logger.debug("Gemini prompt (first 1000 chars): %s", prompt[:1000])
+
         # Instantiate model
         model = genai.GenerativeModel(self.model_name)
         
@@ -48,4 +55,8 @@ class GeminiProvider(BaseLLMProvider):
                 max_output_tokens=max_tokens
             )
         )
-        return response.text
+        answer = response.text
+        logger.info("Gemini response — model=%s, response_len=%d chars", self.model_name, len(answer))
+        logger.debug("Gemini response (first 1000 chars): %s", answer[:1000])
+        return answer
+

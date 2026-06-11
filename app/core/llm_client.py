@@ -39,13 +39,20 @@ async def generate_answer(system_prompt: str, user_prompt: str, model_name: str 
     ]
 
     try:
+        logger.info("LLM request — model=%s, prompt_len=%d chars", model, len(user_prompt))
+        logger.debug("LLM system prompt: %s", system_prompt[:500])
+        logger.debug("LLM user prompt (first 1000 chars): %s", user_prompt[:1000])
+
         response = await litellm.acompletion(
             model=model,
             messages=messages,
             temperature=0.0,  # low temperature for RAG to minimize hallucination
             max_tokens=4000,
         )
-        return response.choices[0].message.content or ""
+        answer = response.choices[0].message.content or ""
+        logger.info("LLM response — model=%s, response_len=%d chars", model, len(answer))
+        logger.debug("LLM response (first 1000 chars): %s", answer[:1000])
+        return answer
     except Exception as e:
         logger.error("LLM Generation failed: %s", e)
         return f"Error: Failed to generate answer using {model}. Details: {str(e)}"

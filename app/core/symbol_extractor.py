@@ -405,6 +405,7 @@ def extract_symbols(file_path: Path, language: str | None) -> ExtractionResult:
     Returns:
         An ExtractionResult containing symbols, imports, and exports.
     """
+    logger.debug("Extracting symbols from: %s (language=%s)", file_path, language)
     try:
         source = file_path.read_text(encoding="utf-8")
     except Exception as e:
@@ -414,20 +415,31 @@ def extract_symbols(file_path: Path, language: str | None) -> ExtractionResult:
     # Determine tree-sitter language key
     lang_key = _LANG_MAP.get(language or "", None)
 
+    result = None
     if lang_key:
         parser = _get_parser(lang_key)
         if parser:
             try:
                 tree = parser.parse(source.encode("utf-8"))
                 if lang_key == "python":
-                    return _extract_python(tree.root_node, str(file_path))
+                    result = _extract_python(tree.root_node, str(file_path))
                 else:
-                    return _extract_js_ts(tree.root_node, str(file_path))
+                    result = _extract_js_ts(tree.root_node, str(file_path))
             except Exception as e:
                 logger.warning(
                     "Tree-sitter extraction failed for %s, falling back to regex: %s",
                     file_path, e,
                 )
 
-    # Fallback to regex for unsupported/failed languages
-    return _extract_regex(source, str(file_path))
+    if result is None:
+        # Fallback to regex for unsupported/failed languages
+        result = _extract_regex(source, str(file_path))
+
+    logger.debug(
+        "Extraction complete for %s: %d symbols, %d imports, %d exports found",
+        file_path.name,
+        len(result.symbols),
+        len(result.imports),
+        len(result.exports),
+    )
+    return result

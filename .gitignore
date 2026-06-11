@@ -30,6 +30,9 @@ probe.db
 chroma_data/
 chroma_db/
 
+# Logs
+logs/
+
 # Testing
 .pytest_cache/
 .mypy_cache/

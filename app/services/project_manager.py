@@ -48,12 +48,16 @@ class ProjectManager:
             return result.scalars().all()
 
     async def create_project(self, name: str) -> Project:
-        """Create a new project."""
+        """Create a new project record."""
+        logger.info("Creating new project: %s", name)
         async with AsyncSessionLocal() as db:
-            project = Project(name=name)
+            project = Project(
+                name=name,
+            )
             db.add(project)
             await db.commit()
             await db.refresh(project)
+            logger.info("Project created with ID: %s", project.id)
             return project
 
     async def create_version(
@@ -64,7 +68,11 @@ class ProjectManager:
         source_type: str,
         source_uri: str,
     ) -> ProjectVersion:
-        """Create a new version for a project."""
+        """Create a new version record for a project."""
+        logger.info(
+            "Creating version %d for project %s (mode=%s, source_type=%s, source_uri=%s)",
+            version_num, project_id, mode, source_type, source_uri
+        )
         async with AsyncSessionLocal() as db:
             version = ProjectVersion(
                 project_id=project_id,
@@ -72,10 +80,12 @@ class ProjectManager:
                 mode=mode,
                 source_type=source_type,
                 source_uri=source_uri,
+                status='pending'
             )
             db.add(version)
             await db.commit()
             await db.refresh(version)
+            logger.info("Version created with ID: %s", version.version_id)
             return version
 
     async def get_version(self, version_id: str) -> ProjectVersion | None:
@@ -140,18 +150,22 @@ class ProjectManager:
 
             await db.commit()
 
-    async def mark_completed(self, version_id: str) -> None:
-        """Mark a version as completed with the current timestamp."""
+    async def mark_completed(self, version_id: str, metadata: dict[str, Any] | None = None) -> None:
+        """Mark a version as completed."""
+        logger.info("Marking version %s as completed", version_id)
         async with AsyncSessionLocal() as db:
             result = await db.execute(select(ProjectVersion).where(ProjectVersion.version_id == version_id))
             version = result.scalar_one_or_none()
             if version:
                 version.status = 'completed'
+                if metadata:
+                    version.metadata_json = metadata
                 version.completed_at = utc_now()
                 await db.commit()
 
     async def mark_failed(self, version_id: str, error: str) -> None:
         """Mark a version as failed with an error message."""
+        logger.error("Marking version %s as failed: %s", version_id, error)
         async with AsyncSessionLocal() as db:
             result = await db.execute(select(ProjectVersion).where(ProjectVersion.version_id == version_id))
             version = result.scalar_one_or_none()

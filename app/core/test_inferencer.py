@@ -81,9 +81,11 @@ def infer_test_mapping(
     Returns:
         Dict mapping test file paths to lists of source file paths they test.
     """
+    logger.info("Inferring test-to-source mapping for project...")
     # Build lookup sets
     all_paths = {f.path for f in files}
     source_paths = {f.path for f in files if f.category == "source"}
+    logger.debug("Test inference base: %d total source files", len(source_paths))
 
     test_mapping: dict[str, list[str]] = {}
 
@@ -147,8 +149,11 @@ def infer_test_mapping(
 
         # Deduplicate and store
         if targets:
-            test_mapping[f.path] = list(dict.fromkeys(targets))  # preserve order, dedup
+            dedup_targets = list(dict.fromkeys(targets))  # preserve order, dedup
+            logger.info("Mapped test file '%s' to source files: %s", f.path, dedup_targets)
+            test_mapping[f.path] = dedup_targets
 
+    logger.info("Test-to-source mapping complete. Mapped %d test files.", len(test_mapping))
     return test_mapping
 
 

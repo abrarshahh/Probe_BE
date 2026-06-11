@@ -112,9 +112,11 @@ async def resolve_upload(
         ValueError: If the file is not a valid ZIP archive.
     """
     if not zipfile.is_zipfile(zip_path):
+        logger.error("Invalid ZIP archive: %s", zip_path)
         raise ValueError(f"Not a valid ZIP archive: {zip_path}")
 
     extract_dir = workspace_path / "project"
+    logger.info("Extracting upload ZIP: %s -> %s", zip_path, extract_dir)
 
     # Run extraction in a thread to avoid blocking the event loop
     def _extract() -> None:
@@ -131,8 +133,10 @@ async def resolve_upload(
     # If the zip contained a single top-level directory, use that as root
     children = list(extract_dir.iterdir())
     if len(children) == 1 and children[0].is_dir():
+        logger.info("Using single top-level directory as project root: %s", children[0].name)
         return children[0]
 
+    logger.info("Extraction complete: %s", extract_dir)
     return extract_dir
 
 
@@ -179,6 +183,7 @@ async def resolve_source(
     Returns:
         Path to the local project root.
     """
+    logger.info("Resolving source: type=%s", source_type)
     if source_type == "github_url":
         if not url:
             raise ValueError("GitHub URL is required for source_type='github_url'")

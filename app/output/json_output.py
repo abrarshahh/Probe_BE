@@ -7,10 +7,13 @@ for downstream tool consumption.
 
 from __future__ import annotations
 
+import json
+import logging
+
 from app.models.internal import ProjectContext
 
+logger = logging.getLogger(__name__)
 
-import json
 
 def render_json(context: ProjectContext, summary: str, file_contents: dict[str, str]) -> str:
     """
@@ -24,6 +27,13 @@ def render_json(context: ProjectContext, summary: str, file_contents: dict[str, 
     Returns:
         A JSON string.
     """
+    logger.info("Rendering JSON bundle for project: %s", context.name)
+    logger.debug(
+        "Stats: %d files, %d symbols, %d entry points",
+        len(file_contents),
+        len(context.symbols),
+        len(context.entry_points),
+    )
     files_list = []
     for path, content in file_contents.items():
         lang = ""
@@ -80,4 +90,6 @@ def render_json(context: ProjectContext, summary: str, file_contents: dict[str, 
         }
     }
     
-    return json.dumps(output_dict, indent=2)
+    result = json.dumps(output_dict, indent=2)
+    logger.info("JSON rendering complete. Generated %d characters", len(result))
+    return result

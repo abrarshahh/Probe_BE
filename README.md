@@ -82,6 +82,36 @@ curl -X POST http://localhost:8000/api/v1/query/version/{version_id} \
   -d '{"question": "Where is the database config?"}'
 ```
 
+## Logging
+
+Probe uses a comprehensive, multi-file logging system with color-coded console output.
+
+### Console Color Codes
+
+| Color | Level | Meaning |
+|---|---|---|
+| 🟢 **Green** | `INFO` | Normal operations (file scans, uploads, progress) |
+| 🔵 **Blue** | `IMPORTANT` | Key milestones (server start, pipeline complete, LLM provider selected) |
+| 🟡 **Yellow** | `WARNING` | Non-critical issues (skipped files, missing optional config) |
+| 🔴 **Red** | `ERROR` / `CRITICAL` | Failures (pipeline crashes, LLM errors, DB connection issues) |
+
+### Log Files
+
+All log files are written to the `logs/` directory:
+
+| File | Contents |
+|---|---|
+| `logs/app.log` | **All** application logs (DEBUG+). The single source of truth. |
+| `logs/error.log` | Errors and critical failures only. Check this first when debugging. |
+| `logs/llm.log` | LLM prompts and responses (Gemini, Groq, Ollama). Includes model name, prompt length, and response length. |
+| `logs/query.log` | ChromaDB and RAG query logs — embedding lookups, collection operations, retrieval results. |
+| `logs/storage.log` | MinIO uploads/downloads and PostgreSQL database operations. |
+| `logs/runs/<version_id>.log` | **Per-run isolation.** Each analysis pipeline run gets its own log file, keyed by version ID. Use this to trace exactly what happened during a specific analysis without grepping through `app.log`. |
+
+### Per-Run Log Isolation
+
+Every time an analysis is triggered, the system creates a dedicated log file at `logs/runs/<version_id>.log`. This file captures only the logs from that specific pipeline run, making it easy to debug individual analyses without noise from other concurrent runs.
+
 ## Development
 
 ```bash

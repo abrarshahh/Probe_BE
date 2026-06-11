@@ -34,6 +34,7 @@ from app.models.db import Project, ProjectVersion
 from app.services.project_manager import ProjectManager
 from app.core.storage import storage_client
 from app.llm.base import get_available_provider
+from app.core.logging_config import get_run_logger, cleanup_run_logger
 
 logger = logging.getLogger(__name__)
 
@@ -240,7 +241,12 @@ async def run_pipeline(
     project_name = str(project.name)
     version_num = int(version.version_num)
 
+    # Create a per-run logger that also writes to logs/runs/<version_id>.log
+    run_log = get_run_logger(version_id)
+
     try:
+        run_log.important("Pipeline started for '%s' v%s (mode=%s)", project_name, version_num, request.mode)  # type: ignore[attr-defined]
+
         # Run shared pipeline
         context, project_root = await run_shared_pipeline(
             request, project, version, project_manager
@@ -258,12 +264,14 @@ async def run_pipeline(
             f"{project_name}/v{version_num}/input/source.zip", tmp_zip_path
         )
         tmp_zip_path.unlink()
+        run_log.info("Source archive uploaded to MinIO")
 
         # Save complete ProjectContext to MinIO
         context_dict = context.model_dump()
         storage_client.upload_json(
             f"{project_name}/v{version_num}/output/context.json", context_dict
         )
+        run_log.info("ProjectContext saved to MinIO")
 
         # ── Mode dispatch ────────────────────────────────────────────────
         await project_manager.update_progress(version_id, phase=f"running_{request.mode}")
@@ -276,9 +284,10 @@ async def run_pipeline(
             
             await project_manager.update_progress(version_id, phase="generating_summary")
             provider = await get_available_provider(settings.llm_providers, tier="simple")
-            logger.info("[%s] Using Simple LLM provider: %s", version_id, provider.name)
+            run_log.important("Using LLM provider: %s", provider.name)  # type: ignore[attr-defined]
             
             summary = await provider.generate(bundle_prompt, max_tokens=8000)
+            run_log.info("LLM summary generated (%d chars)", len(summary))
             
             if request.output_format == "json":
                 final_output = render_json(context, summary, file_contents)
@@ -304,9 +313,9 @@ async def run_pipeline(
             object_name = f"{project_name}/v{version_num}/output/index_meta.json"
             storage_client.upload_json(object_name, index_meta)
 
-            logger.info(
-                "[%s] RAG index complete: %d chunks in collection '%s'",
-                version_id, index_meta.get("chunk_count", 0), index_meta.get("collection_name", ""),
+            run_log.important(  # type: ignore[attr-defined]
+                "RAG index complete: %d chunks in collection '%s'",
+                index_meta.get("chunk_count", 0), index_meta.get("collection_name", ""),
             )
 
             await project_manager.mark_completed(version_id)
@@ -318,11 +327,14 @@ async def run_pipeline(
         else:
             await project_manager.mark_failed(version_id, f"Unknown mode: {request.mode}")
 
-        logger.info("[%s] Pipeline completed successfully", version_id)
+        run_log.important("Pipeline completed successfully")  # type: ignore[attr-defined]
 
     except Exception as e:
-        logger.exception("[%s] Pipeline failed", version_id)
+        run_log.exception("Pipeline failed")
         await project_manager.mark_failed(version_id, str(e))
+
+    finally:
+        cleanup_run_logger(version_id)
 
 
 def _format_extension(output_format: str) -> str:

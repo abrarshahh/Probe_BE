@@ -15,12 +15,10 @@ from app.api.router import api_router
 from app.config import settings
 from app.db.database import init_db
 from app.core.storage import storage_client
+from app.core.logging_config import setup_logging
 
-# Configure logging
-logging.basicConfig(
-    level=logging.DEBUG if settings.debug else logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-)
+# Configure logging (must happen before any getLogger calls)
+setup_logging(debug=settings.debug)
 logger = logging.getLogger(__name__)
 
 
@@ -33,18 +31,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Initialize PostgreSQL Database
     await init_db()
-    logger.info("Database initialized")
+    logger.important("Database initialized")  # type: ignore[attr-defined]
     
     # Initialize Storage Client (ensures bucket)
     storage_client.initialize()
-    logger.info("MinIO storage initialized, bucket: %s", storage_client.bucket)
+    logger.important("MinIO storage initialized, bucket: %s", storage_client.bucket)  # type: ignore[attr-defined]
 
-    logger.info("Probe backend started on %s:%s", settings.host, settings.port)
+    logger.important("Probe backend started on %s:%s", settings.host, settings.port)  # type: ignore[attr-defined]
 
     yield
 
     # Shutdown
-    logger.info("Probe backend shutting down")
+    logger.important("Probe backend shutting down")  # type: ignore[attr-defined]
 
 
 def create_app() -> FastAPI:

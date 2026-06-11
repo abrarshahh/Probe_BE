@@ -7,7 +7,11 @@ with fenced code blocks for each source file.
 
 from __future__ import annotations
 
+import logging
+
 from app.models.internal import ProjectContext
+
+logger = logging.getLogger(__name__)
 
 
 def render_markdown(context: ProjectContext, summary: str, file_contents: dict[str, str]) -> str:
@@ -22,6 +26,13 @@ def render_markdown(context: ProjectContext, summary: str, file_contents: dict[s
     Returns:
         A complete Markdown document.
     """
+    logger.info("Rendering markdown context bundle for project: %s", context.name)
+    logger.debug(
+        "Stats: %d files, %d symbols, %d entry points",
+        len(file_contents),
+        len(context.symbols),
+        len(context.entry_points),
+    )
     lines: list[str] = []
     
     lines.append(f"# Project Context: {context.name}\n")
@@ -103,4 +114,6 @@ def render_markdown(context: ProjectContext, summary: str, file_contents: dict[s
         lines.append(content)
         lines.append("```\n")
         
-    return "\n".join(lines)
+    result = "\n".join(lines)
+    logger.info("Markdown rendering complete. Generated %d characters", len(result))
+    return result

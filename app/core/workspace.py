@@ -10,11 +10,14 @@ Responsibilities:
 
 from __future__ import annotations
 
+import logging
 import shutil
 import tempfile
 from pathlib import Path
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class WorkspaceManager:
@@ -29,6 +32,7 @@ class WorkspaceManager:
         base = settings.output_dir / "workspaces"
         base.mkdir(parents=True, exist_ok=True)
         self._workspace_dir = Path(tempfile.mkdtemp(prefix=f"probe_{self.job_id}_", dir=base))
+        logger.info("Workspace created: %s", self._workspace_dir)
         return self._workspace_dir
 
     @property
@@ -41,5 +45,6 @@ class WorkspaceManager:
     def cleanup(self) -> None:
         """Remove the workspace directory and all contents."""
         if self._workspace_dir and self._workspace_dir.exists():
+            logger.info("Cleaning up workspace: %s", self._workspace_dir)
             shutil.rmtree(self._workspace_dir, ignore_errors=True)
             self._workspace_dir = None

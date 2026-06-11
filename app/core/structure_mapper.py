@@ -71,6 +71,8 @@ def generate_directory_tree(
     Returns:
         A string containing the visual directory tree.
     """
+    logger.info("Generating directory tree for project root: %s", project_root)
+    logger.debug("Tree generation parameters: max_depth=%d, max_entries=%d, input_files=%d", max_depth, max_entries, len(files))
     # Build a set of all directories and files from the file records
     dirs: set[str] = set()
     file_paths: set[str] = set()
@@ -131,7 +133,9 @@ def generate_directory_tree(
 
     _render("", "")
 
-    return "\n".join(lines)
+    result = "\n".join(lines)
+    logger.info("Directory tree generated. Total lines: %d", len(lines))
+    return result
 
 
 def detect_entry_points(files: list[FileRecord]) -> list[str]:
@@ -179,6 +183,7 @@ def build_file_inventory(files: list[FileRecord]) -> dict[str, list[str]]:
     Returns:
         Dict mapping category name to list of file paths.
     """
+    logger.info("Building file inventory for %d files...", len(files))
     inventory: dict[str, list[str]] = defaultdict(list)
     for f in files:
         inventory[f.category].append(f.path)
@@ -187,4 +192,8 @@ def build_file_inventory(files: list[FileRecord]) -> dict[str, list[str]]:
     for category in inventory:
         inventory[category].sort()
 
+    logger.debug(
+        "File inventory breakdown: %s",
+        {cat: len(paths) for cat, paths in inventory.items()},
+    )
     return dict(inventory)
