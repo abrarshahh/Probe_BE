@@ -28,8 +28,9 @@ class AnalyzeOptions(BaseModel):
 
 
 class AnalyzeRequest(BaseModel):
-    """Top-level request body for POST /api/v1/analyze."""
+    """Top-level request body for POST /api/v1/projects."""
 
+    project_name: str = Field(..., description="Unique name for the project")
     source: SourceInput
     mode: Literal["one_shot", "rag", "map_reduce"]
     output_format: Literal["markdown", "xml_markdown", "json"] = "markdown"

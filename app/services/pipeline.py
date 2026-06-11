@@ -30,7 +30,9 @@ from app.core.structure_mapper import (
 from app.core.workspace import WorkspaceManager
 from app.models.internal import FileRecord, ProjectContext
 from app.models.requests import AnalyzeRequest
-from app.services.job_manager import JobManager
+from app.models.db import Project, ProjectVersion
+from app.services.project_manager import ProjectManager
+from app.core.storage import storage_client
 from app.llm.base import get_available_provider
 
 logger = logging.getLogger(__name__)
@@ -38,35 +40,28 @@ logger = logging.getLogger(__name__)
 
 async def run_shared_pipeline(
     request: AnalyzeRequest,
-    job_id: str,
-    job_manager: JobManager,
+    project: Project,
+    version: ProjectVersion,
+    project_manager: ProjectManager,
 ) -> tuple[ProjectContext, Path]:
     """
     Execute the shared analysis pipeline (Steps 1-9 from the plan).
-
-    This runs the source resolution, scanning, classification,
-    structure mapping, and dependency analysis that all three modes need.
-
-    Args:
-        request: The original analysis request.
-        job_id: The job identifier.
-        job_manager: For updating job progress.
-
-    Returns:
-        (ProjectContext, project_root_path) — the aggregated context
-        and the path to the project on disk.
     """
-    workspace = WorkspaceManager(job_id)
+    version_id = str(version.version_id)
+    project_name = str(project.name)
+    
+    # Create workspace using version_id
+    workspace = WorkspaceManager(version_id)
 
     try:
         # ── Step 1: Update status ────────────────────────────────────────
-        await job_manager.update_progress(
-            job_id, status="processing", phase="resolving_source"
+        await project_manager.update_progress(
+            version_id, status="processing", phase="resolving_source"
         )
 
         # ── Step 2: Create workspace and resolve source ──────────────────
         workspace_path = workspace.create()
-        logger.info("[%s] Workspace created: %s", job_id, workspace_path)
+        logger.info("[%s] Workspace created: %s", version_id, workspace_path)
 
         upload_path_str = getattr(request, "_upload_path", None)
         upload_path = Path(upload_path_str) if upload_path_str else None
@@ -79,10 +74,10 @@ async def run_shared_pipeline(
             github_token=request.source.github_token,
             upload_path=upload_path,
         )
-        logger.info("[%s] Source resolved: %s", job_id, project_root)
+        logger.info("[%s] Source resolved: %s", version_id, project_root)
 
         # ── Step 3: Scan files with ignore engine ────────────────────────
-        await job_manager.update_progress(job_id, phase="scanning")
+        await project_manager.update_progress(version_id, phase="scanning")
 
         ignore_engine = IgnoreEngine(
             project_root=project_root,
@@ -94,17 +89,17 @@ async def run_shared_pipeline(
         included_paths, skipped_entries = ignore_engine.scan_directory()
         logger.info(
             "[%s] Scan complete: %d included, %d skipped",
-            job_id, len(included_paths), len(skipped_entries),
+            version_id, len(included_paths), len(skipped_entries),
         )
 
-        await job_manager.update_progress(
-            job_id,
+        await project_manager.update_progress(
+            version_id,
             total_files=len(included_paths) + len(skipped_entries),
             files_processed=0,
         )
 
         # ── Step 4: Classify files ───────────────────────────────────────
-        await job_manager.update_progress(job_id, phase="classifying")
+        await project_manager.update_progress(version_id, phase="classifying")
 
         included_files: list[FileRecord] = []
         for i, file_path in enumerate(included_paths):
@@ -113,8 +108,8 @@ async def run_shared_pipeline(
 
             # Update progress every 50 files
             if (i + 1) % 50 == 0:
-                await job_manager.update_progress(
-                    job_id, files_processed=i + 1
+                await project_manager.update_progress(
+                    version_id, files_processed=i + 1
                 )
 
         skipped_files: list[FileRecord] = [
@@ -122,17 +117,17 @@ async def run_shared_pipeline(
             for path, reason in skipped_entries
         ]
 
-        await job_manager.update_progress(
-            job_id, files_processed=len(included_paths)
+        await project_manager.update_progress(
+            version_id, files_processed=len(included_paths)
         )
 
         logger.info(
             "[%s] Classification complete: %d files classified",
-            job_id, len(included_files),
+            version_id, len(included_files),
         )
 
         # ── Step 5: Map structure ────────────────────────────────────────
-        await job_manager.update_progress(job_id, phase="mapping_structure")
+        await project_manager.update_progress(version_id, phase="mapping_structure")
 
         all_files = included_files + skipped_files
         directory_tree = generate_directory_tree(project_root, all_files)
@@ -141,16 +136,16 @@ async def run_shared_pipeline(
 
         logger.info(
             "[%s] Structure mapped: %d entry points found",
-            job_id, len(entry_points),
+            version_id, len(entry_points),
         )
 
         # ── Step 6: Analyze dependencies ─────────────────────────────────
-        await job_manager.update_progress(job_id, phase="analyzing_dependencies")
+        await project_manager.update_progress(version_id, phase="analyzing_dependencies")
 
         dependencies = analyze_dependencies(project_root)
         logger.info(
             "[%s] Dependencies analyzed: %d manifests found",
-            job_id, len(dependencies),
+            version_id, len(dependencies),
         )
 
         # ── Step 7: Detect primary languages ─────────────────────────────
@@ -164,7 +159,7 @@ async def run_shared_pipeline(
         )[:5]
 
         # ── Step 8: Extract symbols ──────────────────────────────────────
-        await job_manager.update_progress(job_id, phase="extracting_symbols")
+        await project_manager.update_progress(version_id, phase="extracting_symbols")
 
         all_symbols = []
         for f in included_files:
@@ -175,11 +170,11 @@ async def run_shared_pipeline(
 
         logger.info(
             "[%s] Symbol extraction complete: %d symbols from %d files",
-            job_id, len(all_symbols), len(included_files),
+            version_id, len(all_symbols), len(included_files),
         )
 
         # ── Step 9: Test-to-source inference ──────────────────────────────
-        await job_manager.update_progress(job_id, phase="inferring_test_mapping")
+        await project_manager.update_progress(version_id, phase="inferring_test_mapping")
 
         test_mapping = infer_test_mapping(included_files)
 
@@ -192,11 +187,11 @@ async def run_shared_pipeline(
 
         logger.info(
             "[%s] Test inference complete: %d test files mapped",
-            job_id, len(test_mapping),
+            version_id, len(test_mapping),
         )
 
         # ── Step 10: Extract project name ────────────────────────────────
-        project_name = project_root.name
+        project_name = project_name
         source_uri = request.source.url or ""
 
         # ── Assemble context ─────────────────────────────────────────────
@@ -218,7 +213,7 @@ async def run_shared_pipeline(
 
         logger.info(
             "[%s] Shared pipeline complete: %d files, %d langs, %d deps",
-            job_id,
+            version_id,
             len(included_files),
             len(primary_languages),
             len(dependencies),
@@ -228,57 +223,63 @@ async def run_shared_pipeline(
 
     except Exception:
         # Don't cleanup workspace on failure — leave for debugging
-        logger.exception("[%s] Pipeline failed", job_id)
+        logger.exception("[%s] Pipeline failed", version_id)
         raise
 
 
 async def run_pipeline(
     request: AnalyzeRequest,
-    job_id: str,
-    job_manager: JobManager,
+    project: Project,
+    version: ProjectVersion,
+    project_manager: ProjectManager,
 ) -> None:
     """
-    Execute the full analysis pipeline for a job.
-
-    Runs the shared pipeline, then dispatches to the selected mode.
-
-    Args:
-        request: The original analysis request.
-        job_id: The job identifier.
-        job_manager: For updating job progress.
+    Execute the full analysis pipeline for a project version.
     """
+    version_id = str(version.version_id)
+    project_name = str(project.name)
+    version_num = int(version.version_num)
+
     try:
         # Run shared pipeline
         context, project_root = await run_shared_pipeline(
-            request, job_id, job_manager
+            request, project, version, project_manager
+        )
+
+        # Zip input files and upload to MinIO
+        import shutil
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
+            tmp_zip_path = Path(tmp_zip.name)
+
+        shutil.make_archive(str(tmp_zip_path.with_suffix("")), "zip", project_root)
+        storage_client.upload_file(
+            f"{project_name}/v{version_num}/input/source.zip", tmp_zip_path
+        )
+        tmp_zip_path.unlink()
+
+        # Save complete ProjectContext to MinIO
+        context_dict = context.model_dump()
+        storage_client.upload_json(
+            f"{project_name}/v{version_num}/output/context.json", context_dict
         )
 
         # ── Mode dispatch ────────────────────────────────────────────────
-        await job_manager.update_progress(job_id, phase=f"running_{request.mode}")
-
-        output_dir = settings.output_dir / job_id
-        output_dir.mkdir(parents=True, exist_ok=True)
+        await project_manager.update_progress(version_id, phase=f"running_{request.mode}")
 
         if request.mode == "one_shot":
-            # Mode A — one_shot (Milestone 2 integration)
-            await job_manager.update_progress(job_id, phase="building_bundle")
+            await project_manager.update_progress(version_id, phase="building_bundle")
             
-            # 1. Build the bundle (handles token budget & file reading)
             file_contents = await build_one_shot_bundle(context, request.options.max_tokens)
-            
-            # 2. Assemble prompt for LLM
-            # We create a simple markdown representation to send to the Simple LLM
-            # It just needs to read the code to summarize it.
             bundle_prompt = render_markdown(context, "Please summarize this codebase.", file_contents)
             
-            await job_manager.update_progress(job_id, phase="generating_summary")
+            await project_manager.update_progress(version_id, phase="generating_summary")
             provider = await get_available_provider(settings.llm_providers, tier="simple")
-            logger.info("[%s] Using Simple LLM provider: %s", job_id, provider.name)
+            logger.info("[%s] Using Simple LLM provider: %s", version_id, provider.name)
             
-            # 3. Use the LLM to generate the context summary
             summary = await provider.generate(bundle_prompt, max_tokens=8000)
             
-            # 4. Format final output
             if request.output_format == "json":
                 final_output = render_json(context, summary, file_contents)
             elif request.output_format == "xml_markdown":
@@ -286,41 +287,42 @@ async def run_pipeline(
             else:
                 final_output = render_markdown(context, summary, file_contents)
             
-            result_path = output_dir / f"context.{_format_extension(request.output_format)}"
-            result_path.write_text(final_output, encoding="utf-8")
+            # Upload final output to MinIO
+            filename = f"bundle.{_format_extension(request.output_format)}"
+            object_name = f"{project_name}/v{version_num}/output/{filename}"
+            storage_client.upload_text(object_name, final_output)
             
-            await job_manager.mark_completed(job_id, result_path=str(result_path))
+            await project_manager.mark_completed(version_id)
 
         elif request.mode == "rag":
-            # Mode B — RAG index builder (Milestone 4)
-            await job_manager.update_progress(job_id, phase="building_rag_index")
+            await project_manager.update_progress(version_id, phase="building_rag_index")
 
-            import json as _json
-            index_meta = await build_rag_index(context, project_root, job_id)
+            # We pass version_id to RAG indexer
+            index_meta = await build_rag_index(context, project_root, version_id)
 
-            # Save index metadata
-            meta_path = output_dir / "index_meta.json"
-            meta_path.write_text(_json.dumps(index_meta, indent=2), encoding="utf-8")
+            # Upload index metadata
+            object_name = f"{project_name}/v{version_num}/output/index_meta.json"
+            storage_client.upload_json(object_name, index_meta)
 
             logger.info(
                 "[%s] RAG index complete: %d chunks in collection '%s'",
-                job_id, index_meta.get("chunk_count", 0), index_meta.get("collection_name", ""),
+                version_id, index_meta.get("chunk_count", 0), index_meta.get("collection_name", ""),
             )
 
-            await job_manager.mark_completed(job_id, result_path=str(meta_path))
+            await project_manager.mark_completed(version_id)
 
         elif request.mode == "map_reduce":
-            # TODO: Mode C — Map-Reduce summarizer (Milestone 5)
-            await job_manager.mark_completed(job_id)
+            # Mode C
+            await project_manager.mark_completed(version_id)
 
         else:
-            await job_manager.mark_failed(job_id, f"Unknown mode: {request.mode}")
+            await project_manager.mark_failed(version_id, f"Unknown mode: {request.mode}")
 
-        logger.info("[%s] Pipeline completed successfully", job_id)
+        logger.info("[%s] Pipeline completed successfully", version_id)
 
     except Exception as e:
-        logger.exception("[%s] Pipeline failed", job_id)
-        await job_manager.mark_failed(job_id, str(e))
+        logger.exception("[%s] Pipeline failed", version_id)
+        await project_manager.mark_failed(version_id, str(e))
 
 
 def _format_extension(output_format: str) -> str:

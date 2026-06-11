@@ -23,32 +23,63 @@ pip install -e ".[dev]"
 # 3. Copy and configure environment
 cp .env.example .env
 
-# 4. Run the server
-uvicorn app.main:app --reload
+# 4. Ensure PostgreSQL and MinIO are running
+# Create the 'probe' database in Postgres, and ensure MinIO is accessible on port 9000.
+
+# 5. Run the server
+python -m fastapi run .\app\main.py --port 8003
 ```
 
 ## API Usage
 
+### 1. Projects Domain
 ```bash
 # Submit an analysis job
-curl -X POST http://localhost:8000/api/v1/analyze \
+curl -X POST http://localhost:8003/api/v1/projects/analyze \
   -H "Content-Type: application/json" \
   -d '{
+    "project_name": "My Project",
     "source": {"type": "github_url", "url": "https://github.com/user/repo"},
     "mode": "one_shot",
     "output_format": "markdown"
   }'
 
-# Check job status
-curl http://localhost:8000/api/v1/jobs/{job_id}
+# List projects (paginated)
+curl http://localhost:8000/api/v1/projects?skip=0&limit=10
 
-# Download result
-curl http://localhost:8000/api/v1/jobs/{job_id}/result
+# Check running job status
+curl http://localhost:8000/api/v1/projects/status/{job_id}
 
-# Query a RAG-indexed project (Mode B only)
-curl -X POST http://localhost:8000/api/v1/jobs/{job_id}/query \
+# Delete an entire project (Cleans DB, MinIO, and ChromaDB)
+curl -X DELETE http://localhost:8000/api/v1/projects/{project_id}
+```
+
+### 2. Versions Domain
+```bash
+# Get all version IDs for a project
+curl http://localhost:8000/api/v1/versions/project/{project_id}
+
+# Get info on a specific version
+curl http://localhost:8000/api/v1/versions/{version_id}
+
+# Download the analysis result (e.g., markdown bundle)
+curl http://localhost:8000/api/v1/versions/{version_id}/download -o result.md
+
+# Delete a specific version
+curl -X DELETE http://localhost:8000/api/v1/versions/{version_id}
+```
+
+### 3. Query Domain (RAG Mode)
+```bash
+# Query the entire project (automatically targets the latest RAG version)
+curl -X POST http://localhost:8000/api/v1/query/project/{project_id} \
   -H "Content-Type: application/json" \
   -d '{"question": "How does authentication work?"}'
+
+# Query a specific historical version
+curl -X POST http://localhost:8000/api/v1/query/version/{version_id} \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Where is the database config?"}'
 ```
 
 ## Development

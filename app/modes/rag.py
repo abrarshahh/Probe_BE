@@ -52,6 +52,16 @@ def _collection_name(job_id: str) -> str:
     # ChromaDB collection names must be 3-63 chars, alphanumeric + underscores
     return f"probe_{job_id}"
 
+def delete_rag_index(job_id: str) -> None:
+    """Delete a RAG index collection for a job from ChromaDB."""
+    client = _get_chroma_client()
+    collection_name = _collection_name(job_id)
+    try:
+        client.delete_collection(collection_name)
+        logger.info("[%s] Deleted RAG index collection '%s'", job_id, collection_name)
+    except Exception as e:
+        logger.warning("[%s] Failed to delete or could not find collection '%s': %s", job_id, collection_name, e)
+
 
 # ---------------------------------------------------------------------------
 # Indexing

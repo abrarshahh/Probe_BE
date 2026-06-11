@@ -13,8 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.config import settings
-from app.deps import set_job_manager
-from app.services.job_manager import JobManager
+from app.db.database import init_db
+from app.core.storage import storage_client
 
 # Configure logging
 logging.basicConfig(
@@ -31,10 +31,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings.output_dir.mkdir(parents=True, exist_ok=True)
     logger.info("Output directory: %s", settings.output_dir.resolve())
 
-    jm = JobManager(settings.db_path)
-    await jm.initialize()
-    set_job_manager(jm)
-    logger.info("Job database initialized: %s", settings.db_path)
+    # Initialize PostgreSQL Database
+    await init_db()
+    logger.info("Database initialized")
+    
+    # Initialize Storage Client (ensures bucket)
+    storage_client.initialize()
+    logger.info("MinIO storage initialized, bucket: %s", storage_client.bucket)
 
     logger.info("Probe backend started on %s:%s", settings.host, settings.port)
 

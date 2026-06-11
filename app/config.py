@@ -28,9 +28,17 @@ class Settings(BaseSettings):
     # --- Provider priority ---
     probe_llm_provider: str = "gemini,groq,ollama"
 
-    # --- Storage ---
+    # --- Storage & Database ---
     output_dir: Path = Path("./outputs")
-    db_path: Path = Path("./probe.db")
+    database_url: str = "postgresql+asyncpg://admin:video_pass@localhost:5432/probe"
+    
+    # Notice the alias maps the typo MINIO_ENDPOIN from .env to endpoint
+    minio_endpoint: str = Field(alias="MINIO_ENDPOIN", default="localhost:9000")
+    minio_access_key: str = ""
+    minio_secret_key: str = ""
+    minio_bucket: str = "probe-projects"
+    minio_secure: bool = False
+
     chroma_persist_dir: Path = Path("./chroma_db")
 
     # --- AI Models ---
