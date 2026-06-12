@@ -170,14 +170,19 @@ async def upload_project_and_analyze(
 @router.post("/projects/{project_id}/rerun", response_model=AnalyzeResponse)
 async def rerun_project(
     project_id: str,
-    request: AnalyzeRequest,
     background_tasks: BackgroundTasks,
 ) -> AnalyzeResponse:
-    """Trigger a new version analysis for an existing project."""
+    """Trigger a new version analysis for an existing project using its latest version's configuration."""
     
     project = await project_manager.get_project_by_id(project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    if not project.versions:
+        raise HTTPException(status_code=400, detail="No previous versions found for this project to rerun.")
+
+    # Eagerly loaded versions relation is ordered desc by version_num
+    latest_version = project.versions[0]
 
     # Determine next version num
     next_version_num = len(project.versions) + 1
@@ -185,14 +190,49 @@ async def rerun_project(
     version = await project_manager.create_version(
         project_id=project.id,
         version_num=next_version_num,
-        mode=request.mode,
-        source_type=request.source.type,
-        source_uri=request.source.url or "upload",
+        mode=latest_version.mode,
+        source_type=latest_version.source_type,
+        source_uri=latest_version.source_uri,
     )
 
-    # Force request project_name to match
-    request.project_name = project.name
-    
+    # Reconstruct request body
+    request = AnalyzeRequest(
+        project_name=project.name,
+        source=SourceInput(
+            type=latest_version.source_type,
+            url=latest_version.source_uri if latest_version.source_type != "upload" else None,
+            branch="main",
+            github_token=None,
+        ),
+        mode=latest_version.mode,  # type: ignore[arg-type]
+        output_format="markdown",
+        options=AnalyzeOptions(),
+    )
+
+    if latest_version.source_type == "upload":
+        from app.config import settings
+        from app.core.storage import storage_client
+        
+        upload_dir = settings.output_dir / "uploads"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        upload_path = upload_dir / f"{version.version_id}.zip"
+        
+        object_name = f"{project.name}/v{latest_version.version_num}/input/source.zip"
+        logger.info("Rerunning upload project. Downloading source archive from: %s", object_name)
+        try:
+            response = storage_client.client.get_object(storage_client.bucket, object_name)
+            data = response.read()
+            response.close()
+            response.release_conn()
+            upload_path.write_bytes(data)
+            request._upload_path = str(upload_path)  # type: ignore[attr-defined]
+        except Exception as e:
+            logger.error("Failed to retrieve previous source upload zip from MinIO: %s", e)
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to retrieve previous upload zip from storage for rerun."
+            )
+
     background_tasks.add_task(run_pipeline, request, project, version, project_manager)
 
     return AnalyzeResponse(

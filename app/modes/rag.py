@@ -236,24 +236,15 @@ def _build_structural_documents(context: ProjectContext) -> list[dict]:
 # Querying
 # ---------------------------------------------------------------------------
 
-async def query_rag_index(
+async def retrieve_context_payload(
     job_id: str,
     request: QueryRequest,
     context: ProjectContext | None = None,
-) -> QueryResponse:
+    project_meta_context: str | None = None,
+) -> tuple[str, list[QuerySource]]:
     """
-    Query a previously built RAG index.
-
-    Embeds the question, retrieves relevant chunks,
-    and assembles a context payload.
-
-    Args:
-        job_id: The job whose index to query.
-        request: The query parameters.
-        context: Optional ProjectContext for structural map prepending.
-
-    Returns:
-        Assembled context payload with source attributions.
+    Retrieve relevant code chunks from ChromaDB and compile them into a context payload.
+    Raises ValueError if the collection is not found.
     """
     collection_name = _collection_name(job_id)
     client = _get_chroma_client()
@@ -261,13 +252,7 @@ async def query_rag_index(
     try:
         collection = client.get_collection(collection_name)
     except Exception as e:
-        logger.error("[%s] Could not find RAG collection: %s", job_id, e)
-        return QueryResponse(
-            context_payload=f"Error: RAG index not found for job {job_id}.",
-            sources=[],
-            token_count=0,
-            structural_map_included=False,
-        )
+        raise ValueError(f"RAG index not found for job {job_id}.") from e
 
     # 1. Embed the question
     model = _get_embedding_model()
@@ -290,12 +275,13 @@ async def query_rag_index(
     results = collection.query(**query_params)
 
     if not results["documents"] or not results["documents"][0]:
-        return QueryResponse(
-            context_payload="No relevant code found for your question.",
-            sources=[],
-            token_count=0,
-            structural_map_included=False,
-        )
+        if project_meta_context:
+            structural_text = _build_structural_preamble(context)
+            parts = [project_meta_context]
+            if structural_text:
+                parts.append(structural_text)
+            return "\n".join(parts), []
+        return "No relevant code found for your question.", []
 
     # 4. Assemble context
     documents = results["documents"][0]
@@ -307,7 +293,6 @@ async def query_rag_index(
     unique_chunks: list[tuple[str, dict, float]] = []
 
     for doc, meta, dist in zip(documents, metadatas, distances):
-        # Create a dedup key from file + line range
         key = f"{meta.get('file_path', '')}:{meta.get('start_line', '')}:{meta.get('end_line', '')}"
         if key not in seen_keys:
             seen_keys.add(key)
@@ -317,6 +302,12 @@ async def query_rag_index(
     payload_parts: list[str] = []
     sources: list[QuerySource] = []
     current_tokens = 0
+
+    # Prepend project meta-context (registry/history/diffs) if provided
+    if project_meta_context:
+        meta_tokens = estimate_tokens(project_meta_context)
+        payload_parts.append(project_meta_context)
+        current_tokens += meta_tokens
 
     # Always prepend structural map
     structural_text = _build_structural_preamble(context)
@@ -356,6 +347,53 @@ async def query_rag_index(
         ))
 
     context_payload = "\n".join(payload_parts)
+    return context_payload, sources
+
+
+async def query_rag_index(
+    job_id: str,
+    request: QueryRequest,
+    context: ProjectContext | None = None,
+    project_meta_context: str | None = None,
+) -> QueryResponse:
+    """
+    Query a previously built RAG index.
+
+    Embeds the question, retrieves relevant chunks,
+    and assembles a context payload.
+
+    Args:
+        job_id: The job whose index to query.
+        request: The query parameters.
+        context: Optional ProjectContext for structural map prepending.
+        project_meta_context: Optional project-wide version registry/diff text.
+
+    Returns:
+        Assembled context payload with source attributions.
+    """
+    try:
+        context_payload, sources = await retrieve_context_payload(
+            job_id, request, context, project_meta_context
+        )
+    except ValueError as e:
+        logger.error("[%s] Could not find RAG collection: %s", job_id, e)
+        return QueryResponse(
+            context_payload=f"Error: {e}",
+            sources=[],
+            token_count=0,
+            structural_map_included=False,
+        )
+
+    if context_payload == "No relevant code found for your question.":
+        return QueryResponse(
+            context_payload=context_payload,
+            sources=[],
+            token_count=0,
+            structural_map_included=False,
+        )
+
+    # Calculate token count estimation of context payload
+    current_tokens = estimate_tokens(context_payload)
 
     # 6. Generate the final answer using the LLM
     from app.core.llm_client import generate_answer
@@ -376,12 +414,15 @@ async def query_rag_index(
     
     answer = await generate_answer(system_prompt, user_prompt)
 
+    # Check if a structural map was included in context_payload
+    structural_map_included = "## Project Context" in context_payload
+
     return QueryResponse(
         answer=answer,
         context_payload=context_payload,
         sources=sources,
         token_count=current_tokens,
-        structural_map_included=bool(structural_text),
+        structural_map_included=structural_map_included,
     )
 
 

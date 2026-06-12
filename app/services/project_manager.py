@@ -104,6 +104,7 @@ class ProjectManager:
             result = await db.execute(
                 select(ProjectVersion)
                 .where(ProjectVersion.project_id == project_id)
+                .options(selectinload(ProjectVersion.project))
                 .order_by(ProjectVersion.version_num.desc())
             )
             return result.scalars().all()
@@ -118,6 +119,7 @@ class ProjectManager:
                     ProjectVersion.mode == "rag",
                     ProjectVersion.status == "completed"
                 )
+                .options(selectinload(ProjectVersion.project))
                 .order_by(ProjectVersion.version_num.desc())
                 .limit(1)
             )

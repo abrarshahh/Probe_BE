@@ -43,6 +43,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown
     logger.important("Probe backend shutting down")  # type: ignore[attr-defined]
+    from app.db.database import engine
+    await engine.dispose()
+    logger.info("Database connection pool disposed.")
 
 
 def create_app() -> FastAPI:
